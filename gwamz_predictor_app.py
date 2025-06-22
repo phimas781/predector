@@ -13,10 +13,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom loader with version check
+# Custom loader with version check and compatibility patch
 @st.cache_resource
 def load_model():
     try:
+        # Add compatibility patch before loading
+        import sklearn.compose._column_transformer
+        if not hasattr(sklearn.compose._column_transformer, '_RemainderColsList'):
+            sklearn.compose._column_transformer._RemainderColsList = None
+        
         # Version compatibility check
         st.sidebar.markdown(f"""
         **Environment Info:**
@@ -24,8 +29,8 @@ def load_model():
         - scikit-learn: {sklearn_version}
         """)
         
-        # Load model with error handling
-        model = joblib.load('gwamz_stream_predictor_final.pkl')
+        # Load model
+        model = joblib.load('gwamz_stream_predictor_compatible.pkl')
         return model
     except Exception as e:
         st.error(f"""
@@ -40,7 +45,6 @@ def load_model():
 
 model = load_model()
 
-# --- UI Components ---
 st.title("🎵 Gwamz Song Performance Predictor PRO")
 st.markdown("""
 Predict the streaming performance of new Gwamz tracks based on historical data patterns.
