@@ -4,155 +4,138 @@ import numpy as np
 import joblib
 from datetime import datetime
 import sys
-import logging
+from sklearn import __version__ as sklearn_version
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure page
+st.set_page_config(
+    page_title="Gwamz Song Predictor PRO",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# App title and description
-st.set_page_config(page_title="Gwamz Song Performance Predictor", layout="wide")
-st.title("🎵 Gwamz Song Performance Predictor")
-st.markdown("""
-Predict the expected streams for Gwamz's new songs based on historical data.
-Adjust the parameters and click **Predict** to see results.
-""")
-
+# Custom loader with version check
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load('gwamz_stream_predictor_v2.pkl')
-        logger.info("Model loaded successfully")
+        # Version compatibility check
+        st.sidebar.markdown(f"""
+        **Environment Info:**
+        - Python: {sys.version.split()[0]}
+        - scikit-learn: {sklearn_version}
+        """)
+        
+        # Load model with error handling
+        model = joblib.load('gwamz_stream_predictor_final.pkl')
         return model
     except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
-        st.error("Failed to load the prediction model. Please check the logs.")
+        st.error(f"""
+        ## Model Loading Failed
+        **Error:** {str(e)}
+        
+        Please ensure:
+        1. The model file exists in the same directory
+        2. Package versions match requirements.txt
+        """)
         st.stop()
 
-# Load model with error handling
-try:
-    model = load_model()
-except Exception as e:
-    st.error(f"Critical error loading model: {str(e)}")
-    st.stop()
+model = load_model()
 
-# App title and description
-st.set_page_config(page_title="Gwamz Song Performance Predictor", layout="wide")
-st.title("🎵 Gwamz Song Performance Predictor")
+# --- UI Components ---
+st.title("🎵 Gwamz Song Performance Predictor PRO")
 st.markdown("""
-This app predicts the expected streams for Gwamz's new songs based on historical data.
-Adjust the parameters below and click **Predict** to see the results.
+Predict the streaming performance of new Gwamz tracks based on historical data patterns.
 """)
 
-# Sidebar for user inputs
-st.sidebar.header("Input Parameters")
+with st.sidebar:
+    st.header("Configuration")
+    st.info("Adjust these parameters to match your new release")
 
-# Calculate days since first release (2021-04-29 based on the data)
-first_release = pd.to_datetime('2021-04-29')
+# Input Form
+with st.form("prediction_form"):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Release Details")
+        release_date = st.date_input(
+            "Release Date",
+            datetime(2025, 7, 1),
+            help="Strategic release dates can impact performance"
+        )
+        album_type = st.selectbox(
+            "Album Type",
+            ["single", "album", "EP"],
+            index=0,
+            help="Singles typically perform better for this artist"
+        )
+        total_tracks = st.slider(
+            "Total Tracks in Release",
+            1, 10, 1,
+            help="More tracks may dilute streaming numbers"
+        )
+        
+    with col2:
+        st.subheader("Track Features")
+        is_sped_up = st.checkbox(
+            "Sped Up Version",
+            help="Sped-up versions have shown variable performance"
+        )
+        is_remix = st.checkbox(
+            "Remix/Edit Version",
+            help="Remixes may attract different audiences"
+        )
+        explicit = st.checkbox(
+            "Explicit Content",
+            value=True,
+            help="Explicit tracks tend to perform slightly better"
+        )
+    
+    submitted = st.form_submit_button("Predict Streams", type="primary")
 
-# User input function
-def user_input_features():
-    # Basic info
-    album_type = st.sidebar.selectbox('Album Type', ('single', 'album', 'compilation'))
-    
-    # Release date
-    release_date = st.sidebar.date_input("Release Date", datetime(2025, 7, 1))
-    release_year = release_date.year
-    release_month = release_date.month
-    release_dayofweek = release_date.weekday()  # Monday=0, Sunday=6
-    days_since_first_release = (release_date - first_release.date()).days
-    
-    # Track details
-    total_tracks_in_album = st.sidebar.slider('Total Tracks in Album', 1, 20, 1)
-    available_markets_count = st.sidebar.slider('Available Markets Count', 1, 200, 185)
-    track_number = st.sidebar.slider('Track Number', 1, 20, 1)
-    disc_number = st.sidebar.slider('Disc Number', 1, 5, 1)
-    
-    # Content flags
-    explicit = st.sidebar.checkbox('Explicit Content', value=True)
-    is_sped_up = st.sidebar.checkbox('Sped Up Version', value=False)
-    is_remix = st.sidebar.checkbox('Remix/Edit/Club Version', value=False)
-    
-    # Fixed artist metrics (from data)
-    artist_followers = 7937
-    artist_popularity = 41
-    
-    data = {
-        'artist_followers': artist_followers,
-        'artist_popularity': artist_popularity,
+# Prediction Logic
+if submitted:
+    # Prepare input data (aligned with training features)
+    input_data = {
+        'artist_followers': 7937,  # From historical data
+        'artist_popularity': 41,   # From historical data
         'album_type': album_type,
-        'release_year': release_year,
-        'release_month': release_month,
-        'release_dayofweek': release_dayofweek,
-        'days_since_first_release': days_since_first_release,
-        'total_tracks_in_album': total_tracks_in_album,
-        'available_markets_count': available_markets_count,
-        'track_number': track_number,
-        'disc_number': disc_number,
+        'release_year': release_date.year,
+        'release_month': release_date.month,
+        'days_since_first_release': (release_date - pd.to_datetime('2021-04-29').date()).days,
+        'total_tracks_in_album': total_tracks,
         'explicit': int(explicit),
         'is_sped_up': int(is_sped_up),
         'is_remix': int(is_remix)
     }
     
-    return pd.DataFrame(data, index=[0])
-
-# Get user input
-input_df = user_input_features()
-
-# Display user inputs
-st.subheader("Selected Parameters")
-st.write(input_df)
-
-# Prediction function
-def predict_streams(input_df):
-    """Predict streams based on input features"""
-    prediction = np.expm1(model.predict(input_df))
-    return int(prediction[0])
-
-# Make prediction when button is clicked
-if st.sidebar.button('Predict Streams'):
-    prediction = predict_streams(input_df)
+    # Convert to DataFrame
+    input_df = pd.DataFrame([input_data])
     
-    st.subheader("Prediction Result")
-    st.success(f"**Predicted Streams:** {prediction:,}")
-    
-    # Interpretation
-    st.markdown("### Interpretation")
-    if prediction > 2000000:
-        st.markdown("🔥 **Exceptional Performance Expected!** This track has potential to be one of Gwamz's top performers.")
-    elif prediction > 1000000:
-        st.markdown("💎 **Strong Performance Expected!** This track should perform well above average.")
-    elif prediction > 500000:
-        st.markdown("👍 **Good Performance Expected!** This track should perform decently.")
-    else:
-        st.markdown("💡 **Moderate Performance Expected.** Consider optimizing release strategy or track features.")
-    
-    # Recommendations based on prediction
-    st.markdown("### Recommendations")
-    if input_df['is_sped_up'].iloc[0] == 1 and prediction < 500000:
-        st.markdown("- Sped up versions in the data have shown mixed performance. Consider releasing a standard version as well.")
-    
-    if input_df['is_remix'].iloc[0] == 1 and prediction < 300000:
-        st.markdown("- Remixes/edits in the data have varied performance. Collaborations might boost streams.")
-    
-    if input_df['total_tracks_in_album'].iloc[0] > 1 and prediction < 400000:
-        st.markdown("- Singles tend to perform better than multi-track releases for this artist.")
-    
-    if input_df['release_month'].iloc[0] in [11, 12] and prediction < 600000:
-        st.markdown("- Holiday season releases might face more competition. Consider promotional activities.")
+    try:
+        # Make prediction
+        log_pred = model.predict(input_df)
+        prediction = int(np.expm1(log_pred)[0])
+        
+        # Display results
+        st.success(f"### Predicted Streams: {prediction:,}")
+        
+        # Performance interpretation
+        if prediction > 1500000:
+            st.balloons()
+            st.markdown("""
+            🔥 **Exceptional Potential**  
+            This configuration matches Gwamz's top-performing tracks!
+            """)
+        elif prediction > 800000:
+            st.markdown("""
+            💎 **Strong Performance Expected**  
+            Likely to perform better than average releases.
+            """)
+            
+    except Exception as e:
+        st.error(f"Prediction failed: {str(e)}")
 
-# Add some analytics
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Historical Performance Insights")
-st.sidebar.markdown("- **Top Performing Tracks**: 'Last Night' (2.9M streams)")
-st.sidebar.markdown("- **Best Release Month**: March (multiple high-performing tracks)")
-st.sidebar.markdown("- **Sped Up Versions**: Can perform well (e.g., 'Just2 - Sped Up' 2.1M streams)")
-st.sidebar.markdown("- **Remixes/Edits**: Performance varies widely (8K to 300K streams)")
-
-# Add footer
+# Footer
 st.markdown("---")
-st.markdown("""
-**Note**: This prediction is based on Gwamz's historical performance data. 
-Actual results may vary based on factors not included in the model like marketing efforts, 
-current trends, and competition.
+st.caption("""
+Note: Predictions are based on historical patterns and don't account for marketing efforts or current trends.
 """)
