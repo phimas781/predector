@@ -3,9 +3,38 @@ import pandas as pd
 import numpy as np
 import joblib
 from datetime import datetime
+import sys
+import logging
 
-# Load the trained model
-model = joblib.load('gwamz_stream_predictor.pkl')
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# App title and description
+st.set_page_config(page_title="Gwamz Song Performance Predictor", layout="wide")
+st.title("🎵 Gwamz Song Performance Predictor")
+st.markdown("""
+Predict the expected streams for Gwamz's new songs based on historical data.
+Adjust the parameters and click **Predict** to see results.
+""")
+
+@st.cache_resource
+def load_model():
+    try:
+        model = joblib.load('gwamz_stream_predictor_v2.pkl')
+        logger.info("Model loaded successfully")
+        return model
+    except Exception as e:
+        logger.error(f"Error loading model: {str(e)}")
+        st.error("Failed to load the prediction model. Please check the logs.")
+        st.stop()
+
+# Load model with error handling
+try:
+    model = load_model()
+except Exception as e:
+    st.error(f"Critical error loading model: {str(e)}")
+    st.stop()
 
 # App title and description
 st.set_page_config(page_title="Gwamz Song Performance Predictor", layout="wide")
