@@ -6,13 +6,25 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import plotly.express as px
 
-# Load models
-model = joblib.load('gwamz_streams_predictor_tuned.pkl')
-prophet_model = joblib.load('gwamz_streams_prophet.pkl')
-album_type_encoder = joblib.load('album_type_encoder.pkl')
-version_type_encoder = joblib.load('version_type_encoder.pkl')
+# Set page config
+st.set_page_config(
+    page_title="Gwamz Analytics Pro",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Preprocess input function (same as before)
+# Load models
+@st.cache_resource
+def load_models():
+    model = joblib.load('gwamz_streams_predictor_tuned.pkl')
+    prophet_model = joblib.load('gwamz_streams_prophet.pkl')
+    album_type_encoder = joblib.load('album_type_encoder.pkl')
+    version_type_encoder = joblib.load('version_type_encoder.pkl')
+    return model, prophet_model, album_type_encoder, version_type_encoder
+
+model, prophet_model, album_type_encoder, version_type_encoder = load_models()
+
+# Preprocess input function
 def preprocess_input(input_data):
     input_df = pd.DataFrame([input_data])
     first_release = datetime(2021, 4, 29)
@@ -26,11 +38,8 @@ def preprocess_input(input_data):
                 'album_type', 'version_type', 'explicit']
     return input_df[features]
 
-# Streamlit App
-st.set_page_config(page_title="Gwamz Analytics Pro", layout="wide")
-
-# Sidebar
-st.sidebar.header("Input Parameters")
+# Sidebar inputs
+st.sidebar.header("🎛️ Input Parameters")
 def user_input_features():
     artist_followers = st.sidebar.slider('Artist Followers', 0, 20000, 7937)
     artist_popularity = st.sidebar.slider('Artist Popularity (0-100)', 0, 100, 41)
@@ -65,35 +74,58 @@ def user_input_features():
         'explicit': explicit
     }
 
+# Main app
+st.title("🎵 Gwamz Song Performance Predictor Pro")
+st.markdown("Predict future song performance using machine learning and time-series forecasting")
+
 input_data = user_input_features()
 
-# Main Dashboard
-st.title("🎵 Gwamz Song Performance Predictor Pro")
+col1, col2 = st.columns(2)
+with col1:
+    if st.button('🔮 Predict Streams', type="primary"):
+        processed_input = preprocess_input(input_data)
+        prediction = model.predict(processed_input)
+        
+        st.success(f"🎶 Predicted Streams: **{int(prediction[0]):,}**")
+        
+        # Performance gauge
+        st.subheader("📊 Performance Potential")
+        gauge_value = min(max(prediction[0], 0), 3000000)
+        st.markdown(f"""
+        <div style="background: linear-gradient(to right, #ff5f5f, #f0f2f6, #5fba7d); 
+                    height: 30px; border-radius: 5px; position: relative;">
+            <div style="position: absolute; left: {gauge_value/3000000*100}%; 
+                        top: -10px; width: 2px; height: 50px; background-color: black;">
+            </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+            <span>0</span>
+            <span>3M</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-# Prediction Section
-if st.button('Predict Streams'):
-    processed_input = preprocess_input(input_data)
-    prediction = model.predict(processed_input)
-    
-    st.success(f"🎶 Predicted Streams: **{int(prediction[0]):,}**")
-    
-    # Show Prophet Forecast
-    st.subheader("📈 Future Streams Forecast (Next 12 Months)")
-    future = prophet_model.make_future_dataframe(periods=12, freq='M')
-    forecast = prophet_model.predict(future)
-    
-    fig = px.line(forecast, x='ds', y='yhat', title='Expected Streams Over Time')
-    fig.update_layout(xaxis_title='Date', yaxis_title='Streams')
-    st.plotly_chart(fig, use_container_width=True)
+with col2:
+    st.subheader("📝 Selected Parameters")
+    st.json(input_data)
 
-    # Feature Importance
-    st.subheader("🔍 Top Factors Affecting Streams")
-    feature_importance = pd.DataFrame({
-        'Feature': ['Track Popularity', 'Artist Followers', 'Release Month', 'Version Type', 'Explicit'],
-        'Impact': [0.35, 0.25, 0.15, 0.10, 0.05]
-    })
-    st.bar_chart(feature_importance.set_index('Feature'))
+# Time-series forecast
+st.subheader("📈 Future Streams Forecast")
+future = prophet_model.make_future_dataframe(periods=12, freq='M')
+forecast = prophet_model.predict(future)
+fig = px.line(forecast, x='ds', y='yhat', title='12-Month Streams Projection')
+fig.update_layout(xaxis_title='Date', yaxis_title='Predicted Streams')
+st.plotly_chart(fig, use_container_width=True)
 
-# Data Explorer
-st.subheader("📊 Historical Performance")
-st.dataframe(gwamz_data[['track_name', 'release_date', 'streams', 'track_popularity']].sort_values('streams', ascending=False))
+# Feature importance
+st.subheader("🔍 Key Performance Factors")
+feature_imp = pd.DataFrame({
+    'Feature': ['Track Popularity', 'Artist Followers', 'Release Month', 'Version Type', 'Explicit'],
+    'Impact': [0.35, 0.25, 0.15, 0.10, 0.05]
+})
+st.bar_chart(feature_imp.set_index('Feature'))
+
+# Historical data
+st.subheader("📋 Historical Performance")
+st.dataframe(pd.read_csv('gwamz_data.csv')[['track_name', 'release_date', 'streams', 'track_popularity']]
+             .sort_values('streams', ascending=False)
+             .head(10))
